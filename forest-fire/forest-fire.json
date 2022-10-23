@@ -1,0 +1,10 @@
+{
+    "rows": 10,
+    "cols": 45,
+    "steps": 100,
+    "wait": 0.5,
+    "skip": 0,
+    "start_fire": 0.001,
+    "grow_tree": 0.01,
+    "new_tree": 0.5
+}
