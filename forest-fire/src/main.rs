@@ -182,7 +182,7 @@ fn main() {
         let mut world = generate(World::new(config.rows, config.cols), config.new_tree);
         clear_screen();
         for step in 1..config.steps {
-            if config.skip > 0 && step % config.skip == 0{
+            if (config.skip <= 0) || (config.skip > 0 && step % config.skip == 0) {
                 cursor_to(1, 1);
                 println!("* {}", step);
                 output(&world);
