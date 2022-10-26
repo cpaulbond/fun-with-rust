@@ -1,26 +1,22 @@
+use std::io::{Read, Write, stdout};
+use std::thread;
+use std::time::Duration;
+use termion::async_stdin;
+use termion::event::{Key, Event, MouseEvent};
+use termion::input::{TermRead, MouseTerminal};
+use termion::raw::IntoRawMode;
+use termion::raw::IntoRawMode;
+use termion::terminal_size;
+use termion::{color, style};
+
+use std::io::{Write, stdout, stdin};
+
 use serde::Deserialize;
-use std::env;
-use std::fmt;
-use std::fs::File;
-use std::io::BufReader;
+// use std::env;
+// use std::fmt;
+// use std::fs::File;
+// use std::io::BufReader;
 use std::{thread, time};
-
-fn clear_screen() {
-    print!("\u{001B}[2J");
-}
-
-fn cursor_to(row: usize, col: usize) {
-    print!("\u{001B}[{};{}H", row, col);
-}
-
-fn red(v: &str) -> String {
-    [
-        "\u{001B}[38:5:9m".to_owned(),
-        v.to_owned(),
-        "\u{001B}[0m".to_owned(),
-    ]
-    .join("")
-}
 
 #[derive(Deserialize, Debug)]
 struct Config {
@@ -32,6 +28,22 @@ struct Config {
     start_fire: f64,
     grow_tree: f64,
     new_tree: f64,
+}
+
+
+fn term_default() -> Config {
+    let (c, r) = terminal_size().unwrap();
+
+    Config {
+        rows: r as usize - 10,
+        cols: c as usize - 10,
+        steps: 10,
+        wait: 0.2,
+        skip: 0,
+        start_fire: 0.001,
+        grow_tree: 0.01,
+        new_tree: 0.5
+    }
 }
 
 #[derive(PartialEq, Copy, Clone, Debug)]
@@ -50,12 +62,6 @@ impl State {
             State::Tree => "t".to_string(),
             State::Fire => "F".to_string(),
         }
-    }
-}
-
-impl fmt::Display for State {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.as_string())
     }
 }
 
@@ -83,18 +89,19 @@ impl World {
     }
 }
 
-fn output(w: &World) {
-    for r in 0..w.rows() {
-        for c in 0..w.cols() {
-            let v = w.get(r, c);
-            if v == State::Fire {
-                print!("{}", red(&v.as_string()));
-            } else {
-                print!("{}", v);
-            }
-        }
-        println!();
-    }
+fn output<W: Write>(stdout: &mut W, w: &World) {
+    write!(stdout, "{}x\n", termion::cursor::Goto(1, 1)).unwrap();
+    // for r in 0..w.rows() {
+    //     for c in 0..w.cols() {
+    //         let v = w.get(r, c);
+    //         if v == State::Fire {
+    //             write!(stdout, "{}{}{}", color::Fg(color::Red), v.as_string(), style::Reset).unwrap();
+    //         } else {
+    //             write!(stdout, "{}", v.as_string()).unwrap();
+    //         }
+    //     }
+    //     write!(stdout, "\n").unwrap();
+    // }
 }
 
 fn generate(mut w: World, new_tree: f64) -> World {
@@ -172,34 +179,88 @@ fn advance(w: &World, grow_tree: f64, start_fire: f64) -> World {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().skip(1).collect();
-    assert_eq!(args.len(), 1);
-    let reader = BufReader::new(File::open(&args[0]).unwrap());
-    let config: Config = serde_json::from_reader(reader).unwrap();
+    let stdout = stdout();
+    let mut stdout = stdout.lock().into_raw_mode().unwrap();
+    let stdin = stdin();
+    let stdin = stdin.lock();
+
+    let config: Config = term_default();
     let wait = time::Duration::from_secs_f64(config.wait);
 
-    if true {
-        let mut world = generate(World::new(config.rows, config.cols), config.new_tree);
-        clear_screen();
-        for step in 1..config.steps {
-            if (config.skip <= 0) || (config.skip > 0 && step % config.skip == 0) {
-                cursor_to(1, 1);
-                println!("* {}", step);
-                output(&world);
-                thread::sleep(wait);
+    write!(stdout, "{}", termion::clear::All).unwrap();
+    stdout.flush().unwrap();
+
+    // let mut bytes = stdin.bytes();
+    // loop {
+    //     let mut world = generate(World::new(config.rows, config.cols), config.new_tree);
+    //         for step in 1..config.steps {
+    //         if (config.skip <= 0) || (config.skip > 0 && step % config.skip == 0) {
+    //             write!(stdout, "{}step {}\n", termion::cursor::Goto(1, 1), step).unwrap();
+    //             output(&mut stdout, &world);
+    //             stdout.flush().unwrap();
+    //             thread::sleep(wait);
+    //         }
+    //         world = advance(&world, config.grow_tree, config.start_fire);
+    //     }
+
+    //     let b = bytes.next().unwrap().unwrap();
+    //     match b {
+    //         // Quit
+    //         b'q' => return,
+    //         _ => (),
+    //     }
+
+    //     stdout.flush().unwrap();
+    // }
+
+    let mut world = generate(World::new(config.rows, config.cols), config.new_tree);
+    for c in stdin.events() {
+        let evt = c.unwrap();
+        match evt {
+            Event::Key(Key::Char('q')) => break,
+            Event::Mouse(me) => {
+                match me {
+                    MouseEvent::Press(_, x, y) => {
+                        write!(stdout, "{}x", termion::cursor::Goto(x, y)).unwrap();
+                    }
+                    _ => (),
+                }
             }
-            world = advance(&world, config.grow_tree, config.start_fire);
+            _ => {}
         }
-    } else {
-        let mut w = World::new(5, 5);
-        for r in 0..w.rows() {
-            for c in 0..w.cols() {
-                w.set(r, c, State::Tree);
-            }
+
+        output(&mut stdout, &world);
+        stdout.flush().unwrap();
+        world = advance(&world, config.grow_tree, config.start_fire);
+    }
+
+    let stdout = stdout();
+    let mut stdout = stdout.lock().into_raw_mode().unwrap();
+    let mut stdin = async_stdin().bytes();
+
+    write!(stdout,
+           "{}{}",
+           termion::clear::All,
+           termion::cursor::Goto(1, 1))
+            .unwrap();
+
+    loop {
+        write!(stdout, "{}", termion::clear::CurrentLine).unwrap();
+
+        let b = stdin.next();
+        write!(stdout, "\r{:?}", b).unwrap();
+        if let Some(Ok(b'q')) = b {
+            break;
         }
-        w.set(0, 0, State::Fire);
-        // println!("{} {}", neighbors_burning(&w, 0, 0), neighbors_burning(&w, 1, 1));
-        println!("{}", neighbors_burning(&w, 0, 0));
-        output(&w);
+
+        stdout.flush().unwrap();
+
+        thread::sleep(Duration::from_millis(50));
+        stdout.write_all(b"# ").unwrap();
+        stdout.flush().unwrap();
+        thread::sleep(Duration::from_millis(50));
+        stdout.write_all(b"\r #").unwrap();
+        write!(stdout, "{}", termion::cursor::Goto(1, 1)).unwrap();
+        stdout.flush().unwrap();
     }
 }
