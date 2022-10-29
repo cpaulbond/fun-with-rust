@@ -4,23 +4,7 @@ use std::fmt;
 use std::fs::File;
 use std::io::BufReader;
 use std::{thread, time};
-
-fn clear_screen() {
-    print!("\u{001B}[2J");
-}
-
-fn cursor_to(row: usize, col: usize) {
-    print!("\u{001B}[{};{}H", row, col);
-}
-
-fn red(v: &str) -> String {
-    [
-        "\u{001B}[38:5:9m".to_owned(),
-        v.to_owned(),
-        "\u{001B}[0m".to_owned(),
-    ]
-    .join("")
-}
+use termion::{cursor, clear, color, style};
 
 #[derive(Deserialize, Debug)]
 struct Config {
@@ -88,7 +72,7 @@ fn output(w: &World) {
         for c in 0..w.cols() {
             let v = w.get(r, c);
             if v == State::Fire {
-                print!("{}", red(&v.as_string()));
+                print!("{}{}{}", color::Fg(color::Red), v.as_string(), style::Reset);
             } else {
                 print!("{}", v);
             }
@@ -168,6 +152,7 @@ fn advance(w: &World, grow_tree: f64, start_fire: f64) -> World {
             a.set(r, c, n);
         }
     }
+
     a
 }
 
@@ -178,28 +163,15 @@ fn main() {
     let config: Config = serde_json::from_reader(reader).unwrap();
     let wait = time::Duration::from_secs_f64(config.wait);
 
-    if true {
-        let mut world = generate(World::new(config.rows, config.cols), config.new_tree);
-        clear_screen();
-        for step in 1..config.steps {
-            if (config.skip <= 0) || (config.skip > 0 && step % config.skip == 0) {
-                cursor_to(1, 1);
-                println!("* {}", step);
-                output(&world);
-                thread::sleep(wait);
-            }
-            world = advance(&world, config.grow_tree, config.start_fire);
+    let mut world = generate(World::new(config.rows, config.cols), config.new_tree);
+    print!("{}", clear::All);
+    for step in 1..config.steps {
+        if (config.skip <= 0) || (config.skip > 0 && step % config.skip == 0) {
+            print!("{}", cursor::Goto(1, 1));
+            println!("* {}", step);
+            output(&world);
+            thread::sleep(wait);
         }
-    } else {
-        let mut w = World::new(5, 5);
-        for r in 0..w.rows() {
-            for c in 0..w.cols() {
-                w.set(r, c, State::Tree);
-            }
-        }
-        w.set(0, 0, State::Fire);
-        // println!("{} {}", neighbors_burning(&w, 0, 0), neighbors_burning(&w, 1, 1));
-        println!("{}", neighbors_burning(&w, 0, 0));
-        output(&w);
+        world = advance(&world, config.grow_tree, config.start_fire);
     }
 }
