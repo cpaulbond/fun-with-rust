@@ -3,7 +3,7 @@
     "cols": 70,
     "steps": 1000,
     "wait": 0.2,
-    "skip": 3,
+    "skip": 0,
     "start_fire": 0.001,
     "grow_tree": 0.01,
     "new_tree": 0.5
